@@ -1,0 +1,14 @@
+{
+  "name": "guardian-contracts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "compile": "node ./scripts/compile.mjs",
+    "deploy": "node ../backend/node_modules/tsx/dist/cli.mjs deploy.ts"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.4"
+  }
+}

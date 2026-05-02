@@ -1,0 +1,52 @@
+{
+  "name": "guardian-circuit-breaker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Guardian circuit-breaker console — Solana signals, Ika dWallet policy signing, Encrypt EVM execution (demo: Sepolia evacuation; same pipeline for deposit/bridge/DEX halts).",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "dev:frontend": "node ./node_modules/vite/bin/vite.js",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:all": "node scripts/dev.mjs",
+    "build": "node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build",
+    "build:frontend": "node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build",
+    "build:backend": "npm run build --prefix backend",
+    "build:all": "npm run build:backend && npm run build:frontend",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "test": "node scripts/verify-submit.mjs",
+    "typecheck": "node ./node_modules/typescript/bin/tsc -b --noEmit",
+    "typecheck:backend": "node backend/node_modules/typescript/bin/tsc -p backend/tsconfig.json --noEmit",
+    "demo:check": "node scripts/check.mjs",
+    "demo:check-funds": "node scripts/check-demo-funds.mjs",
+    "demo:fund-vault": "node scripts/fund-vault-sepolia.mjs",
+    "demo:trigger": "node scripts/trigger.mjs",
+    "verify:e2e": "node scripts/verify-e2e.mjs",
+    "ika:bridge": "node scripts/ika-bridge-with-env.mjs",
+    "bootstrap:solana-wallet": "node scripts/bootstrap-solana-demo-wallet.mjs",
+    "solana:fire-trigger": "node scripts/solana-fire-devnet-trigger.mjs",
+    "demo:full": "node scripts/full-devnet-demo.mjs",
+    "verify:submit": "node scripts/verify-submit.mjs",
+    "free-port": "node scripts/free-port.mjs",
+    "deploy:vault": "npm run compile --prefix contracts && npm run deploy --prefix contracts"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@fontsource/inter": "^5.2.8",
+    "@mui/icons-material": "^9.0.0",
+    "@mui/material": "^9.0.0",
+    "@tabler/icons-react": "^3.41.1",
+    "framer-motion": "^12.38.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.8.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}
