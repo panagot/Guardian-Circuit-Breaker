@@ -200,6 +200,14 @@ export default function ProofCard({
           </Alert>
         )}
 
+      {live.linkStatus === "online" &&
+        live.capabilities?.realSepolia && (
+          <Alert severity="success" sx={{ mx: 2.5, mt: 1.5, borderRadius: 2 }}>
+            <strong>Live Sepolia</strong> is configured — <strong>Run live proof</strong> produces a real vault
+            transaction. The sticky strip at the top is only a UI animation, not this pipeline.
+          </Alert>
+        )}
+
       <Box sx={{ p: { xs: 2, md: 2.5 } }}>
         {!proof ? (
           <EmptyProof

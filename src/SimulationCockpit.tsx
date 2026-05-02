@@ -1,6 +1,9 @@
-import { Box, Button, IconButton, Stack, Tooltip, Typography } from "@mui/material";
+import { useEffect, useRef } from "react";
+import { Alert, Box, Button, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import {
+  IconAlertTriangle,
   IconChevronRight,
+  IconCircleCheck,
   IconPlayerPause,
   IconPlayerPlay,
   IconPlayerSkipForward,
@@ -8,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 
+import { useLive } from "./live/liveProvider";
 import { COLORS, GRADIENTS, SHADOWS } from "./theme";
 import {
   STAGES,
@@ -63,16 +67,40 @@ function fmtClock(ms: number): string {
 
 export default function SimulationCockpit() {
   const sim = useSimulation();
+  const live = useLive();
+  const caps = live.capabilities;
+  const backendOnline = live.linkStatus === "online";
+  const realSepolia = Boolean(caps?.realSepolia);
+  const showSepoliaMockHint =
+    backendOnline && caps != null && !realSepolia;
+
+  /** First time we see a live Sepolia-capable backend, stop the toy timeline so judges are not misled. */
+  const realSepoliaLatch = useRef(false);
+  const pauseSim = sim.pause;
+  const resetSim = sim.reset;
+  useEffect(() => {
+    if (!backendOnline || !realSepolia || realSepoliaLatch.current) return;
+    realSepoliaLatch.current = true;
+    pauseSim();
+    resetSim();
+  }, [backendOnline, realSepolia, pauseSim, resetSim]);
+
   const stageIdx = STAGE_INDEX[sim.stage];
   const tone = STAGE_TONE[sim.stage];
   const isRunning = sim.mode === "running";
   const stageDurSeconds = Math.round(sim.stageDuration / 1000);
   const stageElapsedSeconds = Math.round(sim.stageElapsed / 1000);
 
+  const stripTitle = backendOnline && realSepolia ? "UI storyline" : "Simulation";
+  const stripAria =
+    backendOnline && realSepolia
+      ? "Optional UI scenario — not on-chain proof"
+      : "Simulation cockpit";
+
   return (
     <Box
       component="section"
-      aria-label="Simulation cockpit"
+      aria-label={stripAria}
       sx={{
         position: "sticky",
         top: 60,
@@ -83,6 +111,58 @@ export default function SimulationCockpit() {
         WebkitBackdropFilter: "blur(8px)",
       }}
     >
+      {backendOnline && realSepolia && (
+        <Box sx={{ maxWidth: 1320, mx: "auto", px: { xs: 2, md: 3.25 }, pt: 1.25 }}>
+          <Alert
+            severity="success"
+            icon={<IconCircleCheck size={20} stroke={1.75} />}
+            sx={{
+              py: 0.5,
+              alignItems: "center",
+              bgcolor: COLORS.successSoft,
+              color: COLORS.textPrimary,
+              border: `1px solid rgba(22,163,74,0.28)`,
+              "& .MuiAlert-icon": { color: COLORS.success },
+            }}
+          >
+            <Typography sx={{ fontSize: 13, fontWeight: 600, mb: 0.25 }}>
+              Live Sepolia pipeline is on — this is real
+            </Typography>
+            <Typography sx={{ fontSize: 12.5, color: COLORS.textSecondary, lineHeight: 1.5 }}>
+              Open <strong>Threat feed & proof</strong> and use <strong>End-to-end proof</strong> to trigger and
+              copy <strong>real transaction links</strong>. The timeline below is an{" "}
+              <strong>optional teaching animation only</strong> (not a blockchain receipt).
+            </Typography>
+          </Alert>
+        </Box>
+      )}
+
+      {showSepoliaMockHint && (
+        <Box sx={{ maxWidth: 1320, mx: "auto", px: { xs: 2, md: 3.25 }, pt: 1.25 }}>
+          <Alert
+            severity="warning"
+            icon={<IconAlertTriangle size={20} stroke={1.75} />}
+            sx={{
+              py: 0.5,
+              alignItems: "center",
+              bgcolor: COLORS.warningSoft,
+              color: COLORS.textPrimary,
+              border: `1px solid rgba(180,83,9,0.28)`,
+              "& .MuiAlert-icon": { color: COLORS.warning },
+            }}
+          >
+            <Typography sx={{ fontSize: 13, fontWeight: 600, mb: 0.25 }}>
+              Backend is up, but Sepolia is not in live broadcast mode
+            </Typography>
+            <Typography sx={{ fontSize: 12.5, color: COLORS.textSecondary, lineHeight: 1.5 }}>
+              Set <code>PIPELINE_MODE=real</code> plus vault + relayer + RPC in <code>backend/.env</code> (see{" "}
+              <code>backend/.env.example</code>). Until then, <strong>End-to-end proof</strong> will not show real
+              txs. The strip below stays a UI-only demo.
+            </Typography>
+          </Alert>
+        </Box>
+      )}
+
       <Box
         sx={{
           maxWidth: 1320,
@@ -113,9 +193,27 @@ export default function SimulationCockpit() {
                   pr: 0.75,
                   whiteSpace: "nowrap",
                 }}
-              >
-                Simulation
+                >
+                {stripTitle}
               </Box>
+              {backendOnline && realSepolia && (
+                <Box
+                  sx={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    color: COLORS.textMuted,
+                    px: 0.75,
+                    py: "1px",
+                    borderRadius: 1,
+                    border: `1px dashed ${COLORS.borderStrong}`,
+                    bgcolor: COLORS.bg,
+                  }}
+                >
+                  Not on-chain
+                </Box>
+              )}
               <Box
                 sx={{
                   display: "inline-flex",
@@ -178,11 +276,13 @@ export default function SimulationCockpit() {
                 pl: 0.125,
               }}
             >
-              Demo storyline — real receipts in{" "}
+              {realSepolia && backendOnline
+                ? "Animation only — judges: use "
+                : "Demo storyline — real receipts in "}
               <Box component="span" sx={{ fontWeight: 600, color: COLORS.textSecondary }}>
                 End-to-end proof
               </Box>
-              .
+              {realSepolia && backendOnline ? " for Sepolia txs." : "."}
             </Typography>
             <Typography
               sx={{
@@ -193,11 +293,13 @@ export default function SimulationCockpit() {
                 pl: 0.125,
               }}
             >
-              Demo risk storyline only. Live chain receipts are in{" "}
+              {realSepolia && backendOnline
+                ? "Optional animation for the incident narrative — it does not submit transactions. Real Solana → Ika → Sepolia receipts live in "
+                : "Demo risk storyline only. Live chain receipts are in "}
               <Box component="span" sx={{ fontWeight: 600, color: COLORS.textSecondary }}>
                 End-to-end proof
-              </Box>{" "}
-              (Solana → Ika → Encrypt).
+              </Box>
+              {!realSepolia || !backendOnline ? " (Solana → Ika → Encrypt)." : "."}
             </Typography>
           </Stack>
 
