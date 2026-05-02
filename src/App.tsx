@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Avatar,
@@ -27,10 +27,12 @@ import {
   IconShieldLock,
   IconSparkles,
   IconTopologyBus,
+  IconPresentation,
 } from "@tabler/icons-react";
 import { motion } from "framer-motion";
 
 import { SectionLabel } from "./components";
+import FrontierPitchPresentation from "./FrontierPitchPresentation";
 import OverviewPage from "./pages/OverviewPage";
 import ProtocolConceptPage from "./pages/ProtocolConceptPage";
 import ThreatFeedPage from "./pages/ThreatFeedPage";
@@ -100,8 +102,35 @@ export default function App() {
 function AppShell() {
   const [page, setPage] = useState<Page>("overview");
   const [role, setRole] = useState<Role>("Guardian Admin");
+  const [pitchOpen, setPitchOpen] = useState(false);
   const wallet = useWallet();
   const [walletMenuEl, setWalletMenuEl] = useState<null | HTMLElement>(null);
+
+  const closePitch = useCallback(() => {
+    setPitchOpen(false);
+    if (window.location.hash === "#frontier-pitch") {
+      const { pathname, search } = window.location;
+      window.history.replaceState(null, "", pathname + search);
+    }
+  }, []);
+
+  const openPitch = useCallback(() => {
+    setPitchOpen(true);
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}#frontier-pitch`,
+    );
+  }, []);
+
+  useEffect(() => {
+    const syncFromHash = () => {
+      if (window.location.hash === "#frontier-pitch") setPitchOpen(true);
+    };
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
 
   const current = NAV.find((n) => n.page === page) ?? NAV[0];
   const groups: Array<NavItem["group"]> = ["Protocol"];
@@ -351,11 +380,34 @@ function AppShell() {
               </Typography>
             </Stack>
           </Stack>
+          <Button
+            fullWidth
+            size="small"
+            variant="outlined"
+            startIcon={<IconPresentation size={16} stroke={1.75} />}
+            onClick={openPitch}
+            sx={{
+              mt: 1.25,
+              borderColor: COLORS.borderStrong,
+              color: COLORS.textPrimary,
+              fontWeight: 600,
+              fontSize: 12,
+            }}
+          >
+            Frontier track pitch
+          </Button>
         </Box>
       </Box>
 
       {/* ----------------------------- Main column --------------------- */}
-      <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          minHeight: "100vh",
+        }}
+      >
         {/* Top bar */}
         <Box
           component="header"
@@ -626,6 +678,7 @@ function AppShell() {
         <Box
           component="main"
           sx={{
+            flex: 1,
             maxWidth: 1320,
             width: "100%",
             mx: "auto",
@@ -655,7 +708,76 @@ function AppShell() {
           )}
           {page === "protocol-concept" && <ProtocolConceptPage />}
         </Box>
+
+        <Box
+          component="footer"
+          sx={{
+            maxWidth: 1320,
+            width: "100%",
+            mx: "auto",
+            px: { xs: 2, md: 3.25 },
+            py: 2,
+            mt: "auto",
+            borderTop: `1px solid ${COLORS.border}`,
+            bgcolor: COLORS.paper,
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              gap: 1.5,
+              alignItems: { xs: "flex-start", sm: "center" },
+              justifyContent: "space-between",
+            }}
+          >
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<IconPresentation size={16} stroke={1.75} />}
+              onClick={openPitch}
+              sx={{
+                borderColor: COLORS.borderStrong,
+                color: COLORS.textPrimary,
+                fontWeight: 600,
+              }}
+            >
+              Frontier track pitch
+            </Button>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 2,
+                alignItems: "center",
+              }}
+            >
+              <Typography sx={{ fontSize: 12, color: COLORS.textMuted }}>
+                <Box
+                  component="a"
+                  href="https://github.com/panagot/Guardian-Circuit-Breaker"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ color: COLORS.primary, textDecoration: "none", fontWeight: 600 }}
+                >
+                  GitHub
+                </Box>
+                {" · "}
+                <Box
+                  component="a"
+                  href="https://guardian-circuit-breaker.vercel.app/#frontier-pitch"
+                  sx={{ color: COLORS.textSecondary, textDecoration: "none" }}
+                >
+                  Direct link to slides
+                </Box>
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
       </Box>
+
+      <FrontierPitchPresentation open={pitchOpen} onClose={closePitch} />
 
       <Snackbar
         open={Boolean(wallet.error)}
