@@ -30,9 +30,13 @@ exactly which step to skip without breaking the narrative.
 
 ## Frontend up
 
-- [ ] Visit `http://localhost:5173`. Sidebar shows three pages: Overview,
-  Vault manager, Threat feed / Proof.
+- [ ] Visit `http://localhost:5173`. Sidebar shows four pages: Overview,
+  Vault manager, Threat feed & proof, Protocol story.
 - [ ] Top-right "Backend live" pill is **green**.
+- [ ] With **real Sepolia** configured: a **green** strip appears under the
+  header (“Live Sepolia pipeline is on”) and the top timeline is labeled
+  **UI storyline** / **Not on-chain** — that is intentional; real txs are
+  only in **End-to-end proof** on Threat feed & proof.
 - [ ] Threat feed page renders; proof card capability chips match the
   banner from the previous section.
 
