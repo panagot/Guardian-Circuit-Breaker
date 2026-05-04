@@ -91,6 +91,55 @@ export function createApi(pipeline: Pipeline): express.Express {
     res.json(proof);
   });
 
+  /**
+   * Vault status — used by the judge UI to show how many demo cycles the
+   * relayer can still cover and whether the vault currently needs funding.
+   */
+  app.get("/api/vault/status", async (_req: Request, res: Response) => {
+    try {
+      const status = await pipeline.sepolia.getStatus();
+      res.json(status);
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  /**
+   * Manual vault top-up — sends a real Sepolia tx from the relayer to the
+   * vault. The frontend exposes this as a "Fund vault" button so judges
+   * can recover from a drained vault with a single click and *also* see a
+   * separate, signed Sepolia transaction before the next evacuate run.
+   */
+  app.post("/api/vault/fund", async (req: Request, res: Response) => {
+    if (!detectCapabilities().realSepolia) {
+      res.status(503).json({
+        ok: false,
+        error:
+          "Vault top-up requires PIPELINE_MODE=real plus EVACUATION_VAULT_ADDRESS + SEPOLIA_RELAYER_PRIVATE_KEY.",
+      });
+      return;
+    }
+    try {
+      const raw = req.body?.amountWei;
+      let amount: bigint | undefined;
+      if (typeof raw === "string" && raw.trim() !== "") {
+        try {
+          amount = BigInt(raw);
+        } catch {
+          res.status(400).json({
+            ok: false,
+            error: `amountWei "${raw}" is not a valid integer.`,
+          });
+          return;
+        }
+      }
+      const result = await pipeline.sepolia.topUp(amount);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
   app.post("/api/trigger", (req: Request, res: Response) => {
     if (config.guardianRequireRealSepolia && !detectCapabilities().realSepolia) {
       res.status(503).json({

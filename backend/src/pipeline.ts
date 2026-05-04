@@ -24,7 +24,8 @@ import { SepoliaEvacuator } from "./ethereum/evacuator.js";
 export class Pipeline {
   readonly listener = new SolanaTriggerListener();
   private readonly ika: IkaAdapter;
-  private readonly sepolia: SepoliaEvacuator;
+  /** Read-only access used by /api/vault/* routes. */
+  readonly sepolia: SepoliaEvacuator;
 
   /** in-flight proofs we've started running. Used by health endpoints. */
   private readonly inFlight = new Set<string>();

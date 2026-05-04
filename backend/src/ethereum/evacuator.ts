@@ -55,6 +55,43 @@ export interface PreparedEvacuation {
   payloadDigest: string;
 }
 
+/** Snapshot returned by GET /api/vault/status — used by the judge UI panel. */
+export interface VaultStatus {
+  /** True when the evacuator is connected to a real Sepolia RPC + relayer. */
+  real: boolean;
+  vaultAddress: string;
+  relayerAddress: string;
+  safeDestinationAddress: string;
+  /** Vault balance, base units (wei) as a decimal string + ETH-formatted. */
+  vaultBalanceWei: string;
+  vaultBalanceEth: string;
+  relayerBalanceWei: string;
+  relayerBalanceEth: string;
+  /**
+   * Approx. number of judge presses the relayer can sustain at the current
+   * gas price (top-up tx + evacuate tx per cycle, with a small reserve).
+   */
+  estimatedCyclesRemaining: number;
+  /** Wei amount used by `POST /api/vault/fund` when no body is sent. */
+  defaultTopUpWei: string;
+  /** Wei threshold below which the auto-replenish kicks in before evacuate. */
+  minBalanceWei: string;
+  /** Convenience flag: vault is below the auto-replenish threshold. */
+  needsFunding: boolean;
+}
+
+/** Outcome of a manual top-up (POST /api/vault/fund). */
+export interface FundResult {
+  ok: true;
+  txHash: string;
+  blockNumber: number | null;
+  amountWei: string;
+  amountEth: string;
+  vaultBalanceAfterWei: string;
+  vaultBalanceAfterEth: string;
+  explorerUrl: string;
+}
+
 /**
  * `prepare` builds the EVM payload + digest *before* Ika is asked to sign.
  * `submit` then broadcasts the resulting Ika-signed (or mock-signed) call.
@@ -73,6 +110,122 @@ export class SepoliaEvacuator {
   /** Public read-only view used by /api/ready. */
   get isReal(): boolean {
     return this.real;
+  }
+
+  /**
+   * Snapshot of vault + relayer state, used by the judge UI panel. Falls back
+   * to all-zero values in mock mode so the frontend can render a consistent
+   * shape without branching.
+   */
+  async getStatus(): Promise<VaultStatus> {
+    const minBalance = parseWei(this.cfg.vaultMinBalanceWei);
+    const defaultTopUp = parseWei(this.cfg.vaultTopUpWei);
+
+    if (!this.real || !this.provider || !this.wallet) {
+      return {
+        real: false,
+        vaultAddress: this.cfg.vaultAddress ?? "",
+        relayerAddress: "",
+        safeDestinationAddress: this.cfg.safeDestination ?? "",
+        vaultBalanceWei: "0",
+        vaultBalanceEth: "0.0",
+        relayerBalanceWei: "0",
+        relayerBalanceEth: "0.0",
+        estimatedCyclesRemaining: 0,
+        defaultTopUpWei: defaultTopUp.toString(),
+        minBalanceWei: minBalance.toString(),
+        needsFunding: false,
+      };
+    }
+
+    const vaultAddress = this.cfg.vaultAddress;
+    const [vaultBal, relayerBal, fee] = await Promise.all([
+      this.provider.getBalance(vaultAddress),
+      this.provider.getBalance(this.wallet.address),
+      this.provider.getFeeData().catch(() => null),
+    ]);
+    const gasPrice =
+      fee?.maxFeePerGas ?? fee?.gasPrice ?? ethers.parseUnits("1", "gwei");
+    // ~21k for a value-transfer top-up + ~120k for evacuate (rough upper bound).
+    const gasPerCycle = 21_000n + 120_000n;
+    const costPerCycle = gasPrice * gasPerCycle;
+    const reserve = ethers.parseEther("0.0005");
+    const usable = relayerBal > reserve ? relayerBal - reserve : 0n;
+    const estimatedCyclesRemaining =
+      costPerCycle > 0n ? Number(usable / costPerCycle) : 0;
+
+    return {
+      real: true,
+      vaultAddress,
+      relayerAddress: this.wallet.address,
+      safeDestinationAddress: this.cfg.safeDestination ?? "",
+      vaultBalanceWei: vaultBal.toString(),
+      vaultBalanceEth: ethers.formatEther(vaultBal),
+      relayerBalanceWei: relayerBal.toString(),
+      relayerBalanceEth: ethers.formatEther(relayerBal),
+      estimatedCyclesRemaining,
+      defaultTopUpWei: defaultTopUp.toString(),
+      minBalanceWei: minBalance.toString(),
+      needsFunding: minBalance > 0n ? vaultBal < minBalance : vaultBal === 0n,
+    };
+  }
+
+  /**
+   * Manually top up the vault from the relayer wallet. Used by the judge UI
+   * "Fund vault" button so a press always produces a real Sepolia tx — even
+   * when the auto-replenish path inside `submit()` would have done it
+   * silently. Returns the broadcast + confirmed tx info.
+   */
+  async topUp(amountWei?: bigint): Promise<FundResult> {
+    if (!this.real || !this.provider || !this.wallet) {
+      throw new Error(
+        "Vault top-up requires real Sepolia mode (PIPELINE_MODE=real, EVACUATION_VAULT_ADDRESS, SEPOLIA_RELAYER_PRIVATE_KEY).",
+      );
+    }
+    const fallback = parseWei(this.cfg.vaultTopUpWei);
+    const amount =
+      amountWei && amountWei > 0n ? amountWei : fallback > 0n ? fallback : ethers.parseEther("0.001");
+
+    const reserve = ethers.parseEther("0.0005");
+    const relayerBal = await this.provider.getBalance(this.wallet.address);
+    if (relayerBal < amount + reserve) {
+      throw new Error(
+        `Relayer ${this.wallet.address} has only ${ethers.formatEther(
+          relayerBal,
+        )} ETH; need ${ethers.formatEther(
+          amount + reserve,
+        )} ETH (top-up + gas reserve). Fund it at https://sepoliafaucet.com.`,
+      );
+    }
+
+    logInfo(
+      "sepolia",
+      `Manual top-up: sending ${ethers.formatEther(amount)} ETH from ${this.wallet.address} -> vault ${this.cfg.vaultAddress}`,
+    );
+
+    const tx = await this.wallet.sendTransaction({
+      to: this.cfg.vaultAddress,
+      value: amount,
+    });
+    const receipt = await tx.wait(1, 180_000);
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(
+        `Vault top-up tx ${tx.hash} did not confirm within timeout.`,
+      );
+    }
+    const after = await this.provider.getBalance(this.cfg.vaultAddress);
+    const explorerUrl = `https://sepolia.etherscan.io/tx/${receipt.hash}`;
+    logInfo("sepolia", `Vault funded · ${explorerUrl}`);
+    return {
+      ok: true,
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      amountWei: amount.toString(),
+      amountEth: ethers.formatEther(amount),
+      vaultBalanceAfterWei: after.toString(),
+      vaultBalanceAfterEth: ethers.formatEther(after),
+      explorerUrl,
+    };
   }
 
   constructor(private readonly cfg: AppConfig["sepolia"]) {

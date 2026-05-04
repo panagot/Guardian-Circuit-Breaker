@@ -31,6 +31,36 @@ import type {
  * Reconnect strategy: capped exponential backoff (1s → 2s → 4s → 8s → 15s
  * cap). Every retry bumps `reconnectAttempt` so the UI can show it.
  */
+/**
+ * Snapshot of the Sepolia EvacuationVault. Mirrors the backend
+ * `VaultStatus` shape from `backend/src/ethereum/evacuator.ts`.
+ */
+export interface VaultStatus {
+  real: boolean;
+  vaultAddress: string;
+  relayerAddress: string;
+  safeDestinationAddress: string;
+  vaultBalanceWei: string;
+  vaultBalanceEth: string;
+  relayerBalanceWei: string;
+  relayerBalanceEth: string;
+  estimatedCyclesRemaining: number;
+  defaultTopUpWei: string;
+  minBalanceWei: string;
+  needsFunding: boolean;
+}
+
+export interface FundResult {
+  ok: true;
+  txHash: string;
+  blockNumber: number | null;
+  amountWei: string;
+  amountEth: string;
+  vaultBalanceAfterWei: string;
+  vaultBalanceAfterEth: string;
+  explorerUrl: string;
+}
+
 export interface LiveApi {
   linkStatus: LinkStatus;
   /** How many reconnect attempts we've made since the last successful open. */
@@ -42,10 +72,22 @@ export interface LiveApi {
   proofs: ProofRecord[];
   latestProof: ProofRecord | null;
   logs: LiveLogEntry[];
+  /** Latest snapshot from GET /api/vault/status. Null while loading. */
+  vaultStatus: VaultStatus | null;
+  /** True while a fundVault() request is in flight. */
+  fundingVault: boolean;
+  /** Last successful top-up (latest tx hash + new balance). */
+  lastFundResult: FundResult | null;
+  /** Last error from a fundVault() call (cleared on next success). */
+  fundError: string | null;
   triggerEvacuation: (input?: {
     reason?: string;
     walletId?: string;
   }) => Promise<{ ok: boolean; proofId?: string; error?: string }>;
+  /** Send a top-up tx from the relayer to the vault. Refreshes vaultStatus on success. */
+  fundVault: (amountWei?: string) => Promise<{ ok: boolean; error?: string; result?: FundResult }>;
+  /** Force a fresh GET /api/vault/status. */
+  refreshVaultStatus: () => Promise<void>;
   /** Force an immediate SSE reconnect — used by the "Reconnect" button. */
   reconnectNow: () => void;
 }
@@ -75,6 +117,10 @@ export function LiveProvider({
   const [capabilities, setCapabilities] = useState<CapabilityFlags | null>(null);
   const [proofs, setProofs] = useState<ProofRecord[]>([]);
   const [logs, setLogs] = useState<LiveLogEntry[]>([]);
+  const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
+  const [fundingVault, setFundingVault] = useState(false);
+  const [lastFundResult, setLastFundResult] = useState<FundResult | null>(null);
+  const [fundError, setFundError] = useState<string | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptRef = useRef(0);
   const sourceRef = useRef<EventSource | null>(null);
@@ -519,6 +565,84 @@ export function LiveProvider({
     }
   }, [backendUrl]);
 
+  const refreshVaultStatus = useCallback(async (): Promise<void> => {
+    try {
+      const res = await fetch(`${backendUrl}/api/vault/status`);
+      if (!res.ok) return;
+      const data = (await res.json()) as VaultStatus;
+      setVaultStatus(data);
+    } catch {
+      /* offline; ignored */
+    }
+  }, [backendUrl]);
+
+  // Poll vault status every 12s while the backend is online and Sepolia is
+  // real. Pauses automatically when the link drops.
+  useEffect(() => {
+    if (linkStatus !== "online") return;
+    if (!capabilities?.realSepolia) return;
+    void refreshVaultStatus();
+    const id = window.setInterval(() => {
+      void refreshVaultStatus();
+    }, 12_000);
+    return () => window.clearInterval(id);
+  }, [linkStatus, capabilities?.realSepolia, refreshVaultStatus]);
+
+  // Snappier refresh: as soon as the latest proof completes/fails on a real
+  // Sepolia run, the vault state likely changed — refresh once immediately.
+  const latestProofId = proofs[0]?.id ?? null;
+  const latestProofPhase = proofs[0]?.phase ?? null;
+  const latestProofSource = proofs[0]?.sepolia?.source ?? null;
+  useEffect(() => {
+    if (!capabilities?.realSepolia) return;
+    if (latestProofSource !== "real") return;
+    if (latestProofPhase !== "complete" && latestProofPhase !== "failed") return;
+    void refreshVaultStatus();
+  }, [
+    latestProofId,
+    latestProofPhase,
+    latestProofSource,
+    capabilities?.realSepolia,
+    refreshVaultStatus,
+  ]);
+
+  const fundVault = useCallback<LiveApi["fundVault"]>(
+    async (amountWei) => {
+      setFundingVault(true);
+      setFundError(null);
+      try {
+        const res = await fetch(`${backendUrl}/api/vault/fund`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(amountWei ? { amountWei } : {}),
+        });
+        if (!res.ok) {
+          let errMsg = `backend returned ${res.status}`;
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body?.error) errMsg = body.error;
+          } catch {
+            /* not json */
+          }
+          setFundError(errMsg);
+          return { ok: false, error: errMsg };
+        }
+        const data = (await res.json()) as FundResult;
+        setLastFundResult(data);
+        // Refresh vault status so the UI reflects the new balance immediately.
+        void refreshVaultStatus();
+        return { ok: true, result: data };
+      } catch (err) {
+        const msg = (err as Error).message;
+        setFundError(msg);
+        return { ok: false, error: msg };
+      } finally {
+        setFundingVault(false);
+      }
+    },
+    [backendUrl, refreshVaultStatus],
+  );
+
   const triggerEvacuation = useCallback<LiveApi["triggerEvacuation"]>(
     async (input) => {
       try {
@@ -556,7 +680,13 @@ export function LiveProvider({
       proofs,
       latestProof: proofs[0] ?? null,
       logs,
+      vaultStatus,
+      fundingVault,
+      lastFundResult,
+      fundError,
       triggerEvacuation,
+      fundVault,
+      refreshVaultStatus,
       reconnectNow,
     }),
     [
@@ -567,7 +697,13 @@ export function LiveProvider({
       capabilities,
       proofs,
       logs,
+      vaultStatus,
+      fundingVault,
+      lastFundResult,
+      fundError,
       triggerEvacuation,
+      fundVault,
+      refreshVaultStatus,
       reconnectNow,
     ],
   );

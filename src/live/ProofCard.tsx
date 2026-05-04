@@ -15,12 +15,14 @@ import {
   IconCheck,
   IconCircleCheck,
   IconCloudOff,
+  IconCoin,
   IconCopy,
   IconExternalLink,
   IconKey,
   IconNetwork,
   IconRefresh,
   IconShieldCheck,
+  IconWallet,
   IconWifi,
   IconWifiOff,
 } from "@tabler/icons-react";
@@ -208,6 +210,10 @@ export default function ProofCard({
           </Alert>
         )}
 
+      {live.linkStatus === "online" && live.capabilities?.realSepolia && (
+        <VaultStatusPanel />
+      )}
+
       <Box sx={{ p: { xs: 2, md: 2.5 } }}>
         {!proof ? (
           <EmptyProof
@@ -300,6 +306,216 @@ export default function ProofCard({
       </Box>
     </Box>
   );
+}
+
+/**
+ * Live snapshot of the EvacuationVault funds + a one-click "Fund vault"
+ * button. Shown only when the backend is online with real Sepolia mode.
+ *
+ * Each successful evacuate drains the vault to safeDestination, so this
+ * panel both teaches judges what's happening on-chain and gives them a
+ * recovery path that itself produces a verifiable Sepolia transaction.
+ */
+function VaultStatusPanel() {
+  const live = useLive();
+  const status = live.vaultStatus;
+
+  if (!status || !status.real) return null;
+
+  const balanceEth = formatEth(status.vaultBalanceEth);
+  const relayerEth = formatEth(status.relayerBalanceEth);
+  const cycles = status.estimatedCyclesRemaining;
+  const tone = status.needsFunding
+    ? { bg: COLORS.warningSoft, fg: COLORS.warning, border: `${COLORS.warning}33` }
+    : { bg: COLORS.successSoft, fg: COLORS.success, border: "rgba(22,163,74,0.20)" };
+  const handleFund = async (): Promise<void> => {
+    if (live.fundingVault) return;
+    await live.fundVault();
+  };
+
+  const last = live.lastFundResult;
+
+  return (
+    <Box
+      sx={{
+        mx: 2.5,
+        mt: 1.5,
+        p: 1.5,
+        borderRadius: 2,
+        border: `1px solid ${tone.border}`,
+        bgcolor: tone.bg,
+      }}
+    >
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.25}
+        sx={{ alignItems: { sm: "center" } }}
+      >
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: "center", flex: 1, minWidth: 0 }}
+        >
+          <Box
+            sx={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              bgcolor: COLORS.paper,
+              border: `1px solid ${tone.border}`,
+              color: tone.fg,
+              flexShrink: 0,
+            }}
+          >
+            <IconWallet size={15} stroke={1.85} />
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography
+              sx={{
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: tone.fg,
+              }}
+            >
+              {status.needsFunding
+                ? "Vault is empty — fund it to run another proof"
+                : `Vault funded · ${balanceEth} ETH`}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: 11.5,
+                color: COLORS.textSecondary,
+                lineHeight: 1.45,
+                mt: 0.25,
+              }}
+            >
+              Each proof drains the vault to safeDestination. The relayer (
+              <Box
+                component="span"
+                sx={{
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  color: COLORS.textPrimary,
+                }}
+              >
+                {shortHex(status.relayerAddress, 6, 4)}
+              </Box>
+              ) currently holds <strong>{relayerEth} ETH</strong>
+              {cycles > 0 ? ` · ~${cycles.toLocaleString()} cycles available` : ""}
+              .
+            </Typography>
+          </Box>
+        </Stack>
+        <Button
+          size="small"
+          variant={status.needsFunding ? "contained" : "outlined"}
+          color={status.needsFunding ? "warning" : "primary"}
+          onClick={handleFund}
+          disabled={live.fundingVault || cycles === 0}
+          startIcon={
+            live.fundingVault ? (
+              <CircularProgress size={12} color="inherit" />
+            ) : (
+              <IconCoin size={14} stroke={2} />
+            )
+          }
+          sx={{ height: 30, alignSelf: { xs: "flex-start", sm: "center" } }}
+        >
+          {live.fundingVault
+            ? "Funding…"
+            : status.needsFunding
+              ? "Fund vault (real Sepolia tx)"
+              : "+ Top up vault"}
+        </Button>
+      </Stack>
+
+      {live.fundError && !live.fundingVault && (
+        <Box
+          sx={{
+            mt: 1,
+            px: 1,
+            py: 0.75,
+            borderRadius: 1.25,
+            bgcolor: COLORS.dangerSoft,
+            border: `1px solid ${COLORS.danger}33`,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 0.75,
+          }}
+        >
+          <IconAlertTriangle size={13} color={COLORS.danger} stroke={2} />
+          <Typography
+            sx={{
+              fontSize: 11.5,
+              color: COLORS.danger,
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              lineHeight: 1.45,
+            }}
+          >
+            {live.fundError}
+          </Typography>
+        </Box>
+      )}
+
+      {last && (
+        <Box
+          sx={{
+            mt: 1,
+            px: 1,
+            py: 0.75,
+            borderRadius: 1.25,
+            bgcolor: COLORS.paper,
+            border: `1px solid ${COLORS.border}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+            flexWrap: "wrap",
+          }}
+        >
+          <IconCircleCheck size={13} color={COLORS.success} stroke={2} />
+          <Typography sx={{ fontSize: 11.5, color: COLORS.textSecondary, lineHeight: 1.45 }}>
+            Last top-up: <strong>{formatEth(last.amountEth)} ETH</strong> · vault now{" "}
+            <strong>{formatEth(last.vaultBalanceAfterEth)} ETH</strong>
+          </Typography>
+          <Box
+            component="a"
+            href={last.explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+            sx={{
+              ml: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 0.375,
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: COLORS.primary,
+              textDecoration: "none",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              "&:hover": { textDecoration: "underline" },
+            }}
+          >
+            {shortHex(last.txHash, 8, 6)}
+            <IconExternalLink size={11} stroke={1.85} />
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+/** Trim trailing zeros from an ETH-formatted string but keep at least 4 dp. */
+function formatEth(value: string): string {
+  if (!value) return "0";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value;
+  if (num === 0) return "0";
+  if (num >= 1) return num.toFixed(4);
+  if (num >= 0.0001) return num.toFixed(4);
+  return num.toExponential(2);
 }
 
 function CapabilityChip({
