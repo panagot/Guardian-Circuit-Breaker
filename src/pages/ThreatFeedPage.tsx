@@ -37,6 +37,7 @@ import {
   StatusPill,
 } from "../components";
 import ProofCard from "../live/ProofCard";
+import PolicyActionsPanel from "../PolicyActionsPanel";
 import { useLive, PHASE_LABEL, shortHex } from "../live/liveProvider";
 import type { ProofRecord } from "../live/types";
 import { COLORS, SHADOWS } from "../theme";
@@ -251,6 +252,8 @@ export default function ThreatFeedPage({
       />
 
       <ProofCard />
+
+      <PolicyActionsPanel />
 
       {live.proofs.length > 1 && (
         <ProofHistory proofs={live.proofs.slice(1, 8)} />

@@ -33,6 +33,7 @@ import { motion } from "framer-motion";
 
 import { SectionLabel } from "./components";
 import FrontierPitchPresentation from "./FrontierPitchPresentation";
+import JudgeTour from "./JudgeTour";
 import OverviewPage from "./pages/OverviewPage";
 import ProtocolConceptPage from "./pages/ProtocolConceptPage";
 import ThreatFeedPage from "./pages/ThreatFeedPage";
@@ -103,6 +104,7 @@ function AppShell() {
   const [page, setPage] = useState<Page>("overview");
   const [role, setRole] = useState<Role>("Guardian Admin");
   const [pitchOpen, setPitchOpen] = useState(false);
+  const [tourForceOpen, setTourForceOpen] = useState(false);
   const wallet = useWallet();
   const [walletMenuEl, setWalletMenuEl] = useState<null | HTMLElement>(null);
 
@@ -525,10 +527,10 @@ function AppShell() {
               </Box>
             </Box>
 
-            <Tooltip title="Protocol story (concept map)" arrow>
+            <Tooltip title="Replay judge tour" arrow>
               <IconButton
                 size="small"
-                onClick={() => setPage("protocol-concept")}
+                onClick={() => setTourForceOpen(true)}
                 sx={{
                   border: `1px solid ${COLORS.border}`,
                   borderRadius: 2,
@@ -778,6 +780,11 @@ function AppShell() {
       </Box>
 
       <FrontierPitchPresentation open={pitchOpen} onClose={closePitch} />
+
+      <JudgeTour
+        forceOpen={tourForceOpen}
+        onForceClose={() => setTourForceOpen(false)}
+      />
 
       <Snackbar
         open={Boolean(wallet.error)}
