@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: guardian-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: PIPELINE_MODE
+        value: real
+      - key: GUARDIAN_REQUIRE_REAL_SEPOLIA
+        value: "1"
+      - key: PORT
+        value: 8787
+      - key: ALLOWED_ORIGIN
+        value: https://guardian-circuit-breaker.vercel.app
+      # Set the secrets below in the Render dashboard, never in this file:
+      # - SOLANA_RPC_URL, SOLANA_TRIGGER_ACCOUNT, SOLANA_DEMO_SECRET_BASE64
+      # - IKA_BRIDGE_PRIVATE_KEY, IKA_DWALLET_ID
+      # - SEPOLIA_RPC_URL, EVACUATION_VAULT_ADDRESS, SEPOLIA_RELAYER_PRIVATE_KEY

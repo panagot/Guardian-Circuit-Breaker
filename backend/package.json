@@ -8,7 +8,8 @@
   "scripts": {
     "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
     "dev": "node ./node_modules/tsx/dist/cli.mjs watch src/index.ts",
-    "start": "node dist/index.js",
+    "start": "node ./scripts/start-prod.mjs",
+    "start:single": "node dist/index.js",
     "lint": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
     "ika:sign-bridge": "node ./scripts/ika-http-sign-bridge.mjs"
   },

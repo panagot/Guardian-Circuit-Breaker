@@ -210,21 +210,63 @@ If `realSepolia` is **off**, the proof card warns clearly. If
 
 ---
 
-## Deploying
+## Deploying for live judge access
 
-### Frontend (Vercel)
+You need two services: a **static frontend on Vercel** and a **Node backend
+on a long-running host** (Railway, Render, Fly, or any VPS). The Express
+backend keeps an SSE connection open and **cannot** run as a Vercel
+serverless function.
+
+### Backend → Railway (recommended, ~3 min)
+
+The repo ships a `railway.json` so Railway picks up the right build/start
+commands. The backend's `npm start` is **`node ./scripts/start-prod.mjs`**,
+which auto-launches the **Ika HTTP signing bridge** on the same machine
+when `IKA_BRIDGE_PRIVATE_KEY` is set, then starts the API. One service,
+one process group.
+
+1. **Railway → New project → Deploy from GitHub repo** → select
+   `panagot/Guardian-Circuit-Breaker`.
+2. Railway picks up `railway.json` automatically. Build:
+   `cd backend && npm ci && npm run build`. Start: `cd backend && npm start`.
+3. **Variables** (mirror your local `backend/.env`, but **never commit**):
+   - `PIPELINE_MODE=real`
+   - `GUARDIAN_REQUIRE_REAL_SEPOLIA=1`
+   - `PORT=8787`
+   - `ALLOWED_ORIGIN=https://guardian-circuit-breaker.vercel.app`
+   - `SOLANA_RPC_URL`, `SOLANA_WS_URL`, `SOLANA_TRIGGER_ACCOUNT`,
+     `SOLANA_DEMO_SECRET_BASE64`
+   - `IKA_BRIDGE_PRIVATE_KEY` (32-byte hex; this is what the in-process
+     bridge signs with), `IKA_DWALLET_ID`
+   - `SEPOLIA_RPC_URL`, `EVACUATION_VAULT_ADDRESS`,
+     `SEPOLIA_RELAYER_PRIVATE_KEY`, `SAFE_DESTINATION_ADDRESS`
+4. Wait for the green **Deployed**. Test:
+   `curl https://<your-railway-domain>/api/health` should return JSON with
+   `caps.realSepolia: true`.
+
+> **Render alternative:** the repo also ships `render.yaml`. Same env vars.
+
+### Frontend → Vercel
 
 1. Import `panagot/Guardian-Circuit-Breaker` in Vercel.
 2. **Framework:** Vite. **Build command:** `npm run build`. **Output:** `dist`.
-3. Set **`VITE_BACKEND_URL`** → your API host (no trailing slash).
-4. Redeploy.
+3. **Environment Variables → Production** add:
+   `VITE_BACKEND_URL=https://<your-railway-domain>` (no trailing slash).
+4. **Redeploy**.
 
-### Backend (Railway / Render / Fly / VPS)
+### Verify (judge view)
 
-The Express backend is **not** a static deploy. Run it on a Node host
-(Railway, Render, Fly, or a small VPS), expose `:8787`, and put the URL into
-`VITE_BACKEND_URL` on Vercel. Set **`ALLOWED_ORIGIN`** in `backend/.env` to
-your Vercel URL so CORS allows the SSE stream.
+Open the deployed Vercel URL:
+
+- ✅ **Topbar “Backend live”** pill is green (top-right).
+- ✅ The blue **“Live API not yet connected”** banner is **gone**.
+- ✅ Sticky **green** strip: *“Live Sepolia pipeline is on — this is real.”*
+- ✅ Threat feed → proof card → **Run live proof** → wait for *Confirmed*
+  → click the third artifact's explorer link → real Sepolia tx.
+
+If the green banner is missing, hit `https://<your-railway-domain>/api/ready`
+and read the warnings — the script `node scripts/check.mjs --backend ...`
+prints the same report locally.
 
 ---
 

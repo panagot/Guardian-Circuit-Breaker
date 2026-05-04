@@ -34,6 +34,7 @@ import { motion } from "framer-motion";
 import { SectionLabel } from "./components";
 import FrontierPitchPresentation from "./FrontierPitchPresentation";
 import JudgeTour from "./JudgeTour";
+import OfflineBanner from "./OfflineBanner";
 import OverviewPage from "./pages/OverviewPage";
 import ProtocolConceptPage from "./pages/ProtocolConceptPage";
 import ThreatFeedPage from "./pages/ThreatFeedPage";
@@ -672,6 +673,8 @@ function AppShell() {
             </Tooltip>
           </Stack>
         </Box>
+
+        <OfflineBanner />
 
         {/* Simulation cockpit (sticky below topbar) */}
         <SimulationCockpit />
