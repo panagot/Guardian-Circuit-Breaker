@@ -4,6 +4,19 @@ import { config, type AppConfig } from "../config.js";
 import { logInfo, logWarn } from "../eventBus.js";
 
 /**
+ * Parse a wei-denominated env string. Returns 0n on empty / unparseable input
+ * so callers can use `> 0n` checks to mean "feature is enabled".
+ */
+function parseWei(raw: string): bigint {
+  if (!raw) return 0n;
+  try {
+    return BigInt(raw);
+  } catch {
+    return 0n;
+  }
+}
+
+/**
  * EvacuationVault function selector. Must match contracts/EvacuationVault.sol:
  *   evacuate(bytes32 reasonHash, bytes solanaSig)
  */
@@ -126,6 +139,8 @@ export class SepoliaEvacuator {
 
     if (this.real && this.vault && this.wallet) {
       try {
+        await this.ensureVaultFunded();
+
         // TODO (real-Ika integration): instead of calling `.evacuate(...)`
         // through the relayer wallet, broadcast a transaction whose
         // signature is the Ika signature returned for `prepared.payloadDigest`.
@@ -190,6 +205,67 @@ export class SepoliaEvacuator {
       payloadHex: prepared.payloadHex,
       payloadDigest: prepared.payloadDigest,
     };
+  }
+
+  /**
+   * Demo-mode safety net: each successful evacuate drains the vault to
+   * `safeDestination`. If the next run finds the vault empty, the contract
+   * reverts with `NoFunds()` (`0x43f9e110`). To keep the judge UX as a
+   * one-press → real-tx loop, we top up from the relayer when the on-chain
+   * balance is below the configured threshold.
+   *
+   * Configurable via:
+   *   - VAULT_MIN_BALANCE_WEI  (default "1")
+   *   - VAULT_TOPUP_WEI        (default 0.001 ETH)
+   *
+   * Set either to "0" to disable.
+   */
+  private async ensureVaultFunded(): Promise<void> {
+    if (!this.real || !this.provider || !this.wallet) return;
+
+    const minBalance = parseWei(this.cfg.vaultMinBalanceWei);
+    const topUp = parseWei(this.cfg.vaultTopUpWei);
+    if (minBalance === 0n || topUp === 0n) return;
+
+    const vaultAddress = this.cfg.vaultAddress;
+    if (!vaultAddress) return;
+
+    const vaultBalance = await this.provider.getBalance(vaultAddress);
+    if (vaultBalance >= minBalance) return;
+
+    const relayerBalance = await this.provider.getBalance(this.wallet.address);
+    // Reserve a little ETH so the subsequent evacuate tx can still pay gas.
+    const gasReserve = ethers.parseEther("0.0005");
+    if (relayerBalance < topUp + gasReserve) {
+      throw new Error(
+        `Relayer ${this.wallet.address} has only ${ethers.formatEther(
+          relayerBalance,
+        )} ETH; need at least ${ethers.formatEther(
+          topUp + gasReserve,
+        )} ETH to top up the vault and pay gas. Fund the relayer at https://sepoliafaucet.com.`,
+      );
+    }
+
+    logInfo(
+      "sepolia",
+      `Vault balance ${ethers.formatEther(vaultBalance)} ETH < threshold; topping up ${ethers.formatEther(topUp)} ETH from relayer ${this.wallet.address}`,
+    );
+
+    const tx = await this.wallet.sendTransaction({
+      to: vaultAddress,
+      value: topUp,
+    });
+    const receipt = await tx.wait(1, 180_000);
+    if (!receipt || receipt.status !== 1) {
+      throw new Error(
+        `Vault top-up tx ${tx.hash} did not confirm; aborting evacuate to avoid NoFunds() revert.`,
+      );
+    }
+
+    logInfo(
+      "sepolia",
+      `Vault funded · top-up tx https://sepolia.etherscan.io/tx/${receipt.hash}`,
+    );
   }
 
   async awaitConfirmation(

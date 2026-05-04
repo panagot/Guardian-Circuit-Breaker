@@ -47,6 +47,19 @@ export const config = {
     vaultAddress: readEnv("EVACUATION_VAULT_ADDRESS"),
     safeDestination: readEnv("SAFE_DESTINATION_ADDRESS"),
     relayerPrivateKey: readEnv("SEPOLIA_RELAYER_PRIVATE_KEY"),
+    /**
+     * Minimum vault balance (wei) that `evacuate` needs in order to broadcast.
+     * If the on-chain balance falls below this before a real run, the
+     * evacuator will auto-top-up from the relayer wallet so each judge press
+     * still produces a verifiable Sepolia tx. Set to 0 to disable.
+     */
+    vaultMinBalanceWei: readEnv("VAULT_MIN_BALANCE_WEI", "1"),
+    /**
+     * Amount (wei) the relayer sends to the vault when a top-up is needed.
+     * Default = 0.001 ETH so the demo loop (relayer → vault → safeDestination)
+     * costs almost nothing on Sepolia. Set to 0 to disable.
+     */
+    vaultTopUpWei: readEnv("VAULT_TOPUP_WEI", "1000000000000000"),
   },
 
   pacing: {

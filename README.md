@@ -208,6 +208,23 @@ If `realSepolia` is **off**, the proof card warns clearly. If
 `GUARDIAN_REQUIRE_REAL_SEPOLIA=1` and Sepolia is not configured,
 `POST /api/trigger` returns **`503`** with a hint — no mock fallback.
 
+### Auto-replenish (judge demo loop)
+
+Every successful `evacuate()` drains the vault to `safeDestination`. If
+`safeDestination == relayer`, the funds simply cycle back. To make the
+demo *one-press → real-tx* for any number of judges, the backend
+auto-tops-up the vault from the relayer when its balance falls below a
+threshold:
+
+| Env                       | Default               | Meaning                                              |
+| ------------------------- | --------------------- | ---------------------------------------------------- |
+| `VAULT_MIN_BALANCE_WEI`   | `1`                   | If vault balance < this, top up before evacuating    |
+| `VAULT_TOPUP_WEI`         | `1000000000000000` (0.001 ETH) | Amount the relayer sends to the vault       |
+
+Set either to `0` to disable. If the relayer can't cover top-up + gas,
+the backend throws a clear error pointing at a Sepolia faucet instead
+of letting Sepolia revert with `NoFunds()` (selector `0x43f9e110`).
+
 ---
 
 ## Deploying for live judge access
