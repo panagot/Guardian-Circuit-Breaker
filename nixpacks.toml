@@ -1,0 +1,21 @@
+# Nixpacks fallback config (Railway / Coolify / Easypanel).
+# Picked up only when the platform builder is set to Nixpacks; the
+# preferred path is the root Dockerfile (see railway.json).
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.install]
+cmds = ["echo 'Skipping root install (frontend not needed for backend service).'"]
+
+[phases.build]
+# Use `npm install --include=optional` instead of `npm ci` so Linux-only
+# transitive deps (e.g. utf-8-validate) resolve cleanly even when the
+# committed lockfile was generated on Windows.
+cmds = [
+  "cd backend && npm install --include=optional --no-audit --no-fund",
+  "cd backend && npm run build",
+]
+
+[start]
+cmd = "cd backend && npm start"

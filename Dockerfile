@@ -6,8 +6,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install backend deps (caches when only source changes).
+# Use `npm install --include=optional` so platform-specific optional deps
+# (e.g. `utf-8-validate` on Linux when the lockfile was generated on Windows)
+# resolve cleanly during cloud builds.
 COPY backend/package.json backend/package-lock.json ./backend/
-RUN cd backend && npm ci
+RUN cd backend && npm install --include=optional --no-audit --no-fund
 
 # Build the backend.
 COPY backend/ ./backend/
