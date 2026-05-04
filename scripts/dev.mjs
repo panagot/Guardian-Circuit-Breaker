@@ -35,11 +35,12 @@ const spawned = [];
 
 function start(label, cwd) {
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+  // Windows: shell:false + npm.cmd often throws spawn EINVAL; shell:true fixes it.
   const child = spawn(npmCmd, ["run", "dev"], {
     cwd,
     env: { ...process.env, FORCE_COLOR: "1" },
     stdio: ["ignore", "pipe", "pipe"],
-    shell: false,
+    shell: process.platform === "win32",
   });
   const tag = `${COLORS[label] ?? ""}[${label}]${COLORS.reset}`;
   child.stdout.on("data", (buf) => prefix(buf, tag, process.stdout));
